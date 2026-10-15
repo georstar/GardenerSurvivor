@@ -3,13 +3,13 @@ import { EnemyShot } from './projectiles.js';
 
 export const ENEMY_TYPES = {
   weedling: { name: 'Weedling', hp: 8, speed: 72, r: 10, dmg: 5, xp: 1, color: '#5cc23f', ai: 'chase', draw: drawWeedling },
-  thorn: { name: 'Thorn Bush', hp: 45, speed: 42, r: 18, dmg: 10, xp: 3, color: '#356b2f', ai: 'chase', knockResist: 0.5, draw: drawThorn },
+  thorn: { name: 'Thorn Bush', hp: 45, speed: 42, r: 18, dmg: 10, xp: 8, color: '#356b2f', ai: 'chase', knockResist: 0.5, draw: drawThorn },
   cactus: {
-    name: 'Cactus', hp: 28, speed: 55, r: 14, dmg: 8, xp: 3, color: '#4caf50', ai: 'ranged',
+    name: 'Cactus', hp: 28, speed: 55, r: 14, dmg: 8, xp: 4, color: '#4caf50', ai: 'ranged',
     keepDist: 230, fireRate: 2.6, shotDmg: 8, shotSpeed: 190, draw: drawCactus,
   },
-  flytrap: { name: 'Venus Flytrap', hp: 34, speed: 52, r: 16, dmg: 14, xp: 4, color: '#d6334a', ai: 'lunge', draw: drawFlytrap },
-  vine: { name: 'Creeping Vine', hp: 38, speed: 62, r: 15, dmg: 9, xp: 3, color: '#7d5ba6', ai: 'chase', splits: 'vineling', draw: drawVine },
+  flytrap: { name: 'Venus Flytrap', hp: 34, speed: 52, r: 16, dmg: 14, xp: 5, color: '#d6334a', ai: 'lunge', draw: drawFlytrap },
+  vine: { name: 'Creeping Vine', hp: 38, speed: 62, r: 15, dmg: 9, xp: 5, color: '#7d5ba6', ai: 'chase', splits: 'vineling', draw: drawVine },
   vineling: { name: 'Vineling', hp: 10, speed: 88, r: 9, dmg: 5, xp: 1, color: '#7d5ba6', ai: 'chase', draw: drawVine },
   sunflower: {
     name: 'Mutant Sunflower', hp: 5000, speed: 48, r: 52, dmg: 30, xp: 0, color: '#f7c531', ai: 'boss',
@@ -40,7 +40,11 @@ export class Enemy {
     this.ky = 0;
     this.flash = 0;
     this.slow = 0;
-    this.t = Math.random() * 10;
+    this.burn = 0;
+    this.burnDps = 0;
+    this.burnTick = 0;
+    this.burnSpread = false;
+    this.t =Math.random() * 10;
     this.faceX = 1;
     this.dead = false;
     this.state = 'walk';
@@ -161,6 +165,25 @@ export class Enemy {
       ctx.globalAlpha = (this.flash / 0.12) * (this.isBoss ? 0.25 : 0.55);
       ctx.fillStyle = '#fff';
       circle(ctx, this.x, this.y, r * 0.95);
+      ctx.restore();
+    }
+
+    if (this.burn > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, this.burn / 0.4);
+      for (let i = 0; i < 3; i++) {
+        const fx = this.x + (i - 1) * r * 0.5;
+        const h = r * (0.7 + 0.3 * Math.sin(this.t * 18 + i * 2.1));
+        const fy = this.y - r * 0.4;
+        ctx.fillStyle = '#ff7043';
+        ctx.beginPath();
+        ctx.moveTo(fx - r * 0.22, fy);
+        ctx.quadraticCurveTo(fx - r * 0.2, fy - h * 0.6, fx, fy - h);
+        ctx.quadraticCurveTo(fx + r * 0.2, fy - h * 0.6, fx + r * 0.22, fy);
+        ctx.fill();
+        ctx.fillStyle = '#ffd54f';
+        ellipse(ctx, fx, fy - h * 0.25, r * 0.1, h * 0.25);
+      }
       ctx.restore();
     }
 

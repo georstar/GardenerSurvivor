@@ -24,9 +24,9 @@ python3 -m http.server 8000
 - **Plants:** Weedling, Thorn Bush, Cactus (shoots spines), Venus Flytrap (lunges),
   Creeping Vine (splits when killed), golden elites, and the Mutant Sunflower boss at 10:00
 - **Tools (5 levels each):** Pruning Shears, Boomerang Trowel, Weedkiller Spray, Garden Hose,
-  Lawn Gnomes, Earthquake Rake
+  Weed Torch (sets plants on fire), Lawn Gnomes, Earthquake Rake
 - **Passives:** Garden Boots, Work Gloves, Straw Hat, Fertilizer, Seed Pouch, Sundial
-- **Pickups:** seeds (XP), tomatoes (heal), bees (pull in every seed on the map)
+- **Pickups:** seeds (XP, bigger plants drop richer seeds), tomatoes (heal), bees (pull in every seed on the map), golden watering cans (wilt every plant on screen)
 
 ## Debug
 

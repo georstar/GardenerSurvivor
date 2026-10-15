@@ -28,6 +28,7 @@ export class Game {
     this.boss = null;
     this.winTimer = -1;
     this.won = false;
+    this.screenFlash = 0;
     camera.snap(0, 0);
   }
 
@@ -48,7 +49,7 @@ export class Game {
     this.ui.banner(text);
   }
 
-  hitEnemy(e, dmg, kx = 0, ky = 0) {
+  hitEnemy(e, dmg, kx = 0, ky = 0, color = '#fff') {
     if (e.dead) return;
     e.hp -= dmg;
     e.flash = 0.12;
@@ -57,11 +58,11 @@ export class Game {
     e.ky += ky * res;
     const k = Math.hypot(e.kx, e.ky);
     if (k > 500) { e.kx *= 500 / k; e.ky *= 500 / k; }
-    this.particles.text(e.x, e.y - e.r, String(Math.round(dmg)), '#fff', e.isBoss ? 16 : 12);
+    this.particles.text(e.x, e.y - e.r, String(Math.round(dmg)), color, e.isBoss ? 16 : 12);
     if (e.hp <= 0) this.killEnemy(e);
   }
 
-  killEnemy(e) {
+  killEnemy(e, split = true) {
     e.dead = true;
     this.kills++;
     this.particles.burst(e.x, e.y, e.def.color, e.isBoss ? 60 : e.elite ? 20 : 7, e.r);
@@ -76,18 +77,48 @@ export class Game {
     if (e.elite) {
       this.pickups.push(new Pickup('heart', e.x + 12, e.y));
       if (Math.random() < 0.4) this.pickups.push(new Pickup('bee', e.x - 12, e.y));
+      if (Math.random() < 0.25) this.pickups.push(new Pickup('can', e.x, e.y + 12));
     } else {
       const r = Math.random();
       if (r < 0.008) this.pickups.push(new Pickup('heart', e.x, e.y));
       else if (r < 0.0105) this.pickups.push(new Pickup('bee', e.x, e.y));
+      else if (r < 0.0125) this.pickups.push(new Pickup('can', e.x, e.y));
     }
-    if (e.def.splits) {
+    if (e.burn > 0 && e.burnSpread) {
+      // Burning plants pass the fire on to their neighbours (without the spread, so it can't chain forever).
+      this.grid.forEachNear(e.x, e.y, 70 + MAX_ENEMY_R, (o) => {
+        if (o.dead || o.isBoss) return;
+        const rr = 70 + o.r;
+        if ((o.x - e.x) ** 2 + (o.y - e.y) ** 2 > rr * rr) return;
+        this.ignite(o, e.burnDps, 2);
+      });
+    }
+    if (split && e.def.splits) {
       for (let i = 0; i < 2; i++) {
         const c = this.spawnEnemy(e.def.splits, e.x + rand(-8, 8), e.y + rand(-8, 8));
         c.kx = rand(-150, 150);
         c.ky = rand(-150, 150);
       }
     }
+  }
+
+  ignite(e, dps, dur, spread = false) {
+    if (e.dead) return;
+    if (e.burn <= 0) e.burnTick = 0.5;
+    e.burn = Math.max(e.burn, dur);
+    e.burnDps = Math.max(e.burnDps, dps);
+    e.burnSpread = e.burnSpread || spread;
+  }
+
+  // Golden Watering Can: every plant on screen wilts, the boss just takes a big hit.
+  wiltScreen() {
+    for (const e of this.enemies.slice()) {
+      if (e.dead || !this.camera.inView(e.x, e.y, e.r)) continue;
+      if (e.isBoss) this.hitEnemy(e, e.maxHp * 0.1, 0, 0, '#ffd740');
+      else this.killEnemy(e, false);
+    }
+    this.camera.addShake(10);
+    this.screenFlash = 0.5;
   }
 
   dropXp(x, y, value) {
@@ -120,6 +151,9 @@ export class Game {
     } else if (k.kind === 'bee') {
       for (const o of this.pickups) if (o.kind === 'xp') o.magnetized = true;
       this.particles.text(p.x, p.y - 26, 'Bzzz!', '#ffca28', 15);
+    } else if (k.kind === 'can') {
+      this.particles.text(p.x, p.y - 26, 'Wilt!', '#ffd740', 18);
+      this.wiltScreen();
     }
   }
 
@@ -135,6 +169,20 @@ export class Game {
     this.separate();
 
     for (const w of p.weapons) w.update(dt, this);
+
+    for (const e of this.enemies) {
+      if (e.dead || e.burn <= 0) continue;
+      e.burnTick -= dt;
+      if (e.burnTick <= 0) {
+        e.burnTick += 0.5;
+        this.hitEnemy(e, e.burnDps * 0.5, 0, 0, '#ff9800');
+      }
+      e.burn -= dt;
+      if (e.burn <= 0) {
+        e.burnDps = 0;
+        e.burnSpread = false;
+      }
+    }
 
     // Contact damage; enemies are pushed out of the gardener so they don't stack on top.
     this.grid.forEachNear(p.x, p.y, p.r + MAX_ENEMY_R, (e) => {
@@ -180,6 +228,7 @@ export class Game {
       }
     }
 
+    if (this.screenFlash > 0) this.screenFlash -= dt;
     this.particles.update(dt);
     this.camera.follow(p.x, p.y, dt);
 

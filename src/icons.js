@@ -125,6 +125,27 @@ function hose(ctx) {
   ctx.fill();
 }
 
+function torch(ctx) {
+  ctx.translate(-3, 0);
+  ctx.fillStyle = '#c62828';
+  rrect(ctx, -13, -6, 9, 17, 3.5);
+  ctx.fillStyle = '#ef5350';
+  rrect(ctx, -11, -4, 3, 12, 1.5);
+  ctx.fillStyle = '#616161';
+  rrect(ctx, -5, -2, 12, 4, 1.5);
+  ctx.fillStyle = '#424242';
+  rrect(ctx, 5, -3, 4, 6, 1);
+  ctx.fillStyle = '#ff7043';
+  ctx.beginPath();
+  ctx.moveTo(9, -5);
+  ctx.quadraticCurveTo(17, -9, 20, 0);
+  ctx.quadraticCurveTo(17, 9, 9, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#ffd54f';
+  ellipse(ctx, 13, 0, 4, 2.5);
+}
+
 function gnomes(ctx) {
   ctx.translate(0, 3);
   drawGnome(ctx, 1);
@@ -260,7 +281,7 @@ export function drawTomato(ctx, s = 1) {
 }
 
 export const ICONS = {
-  shears, trowel, spray, hose, gnomes, rake,
+  shears, trowel, spray, hose, torch, gnomes, rake,
   boots, gloves, hat, fertilizer, pouch, sundial,
   heal: (ctx) => drawTomato(ctx, 1),
 };

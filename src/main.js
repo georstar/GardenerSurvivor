@@ -109,6 +109,10 @@ function drawOverlays() {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, camera.w, camera.h);
   }
+  if (game.screenFlash > 0) {
+    ctx.fillStyle = `rgba(255,236,150,${Math.min(1, game.screenFlash / 0.5) * 0.7})`;
+    ctx.fillRect(0, 0, camera.w, camera.h);
+  }
   drawJoystick(ctx);
 }
 

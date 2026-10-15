@@ -1,4 +1,4 @@
-import { TAU, rand, angleDiff, normalize, circle } from './utils.js';
+import { TAU, rand, angleDiff, normalize, circle, ellipse } from './utils.js';
 import { ICONS, drawTrowel, drawGnome } from './icons.js';
 
 const MAX_ENEMY_R = 64; // search margin so big enemies are found by grid queries
@@ -223,18 +223,34 @@ class Spray extends Weapon {
   }
 }
 
-// Rotating jets of water that push plants away.
+// Rotating jets of water that push plants away and soak them (slow).
 class Hose extends Weapon {
   constructor(def) {
     super(def);
     this.angle = 0;
     this.tick = 0;
     this.t = 0;
+    this.puddles = [];
   }
   update(dt, game) {
     const p = game.player, s = this.s;
     this.t += dt;
     this.angle += s.rot * dt;
+    for (const pd of this.puddles) {
+      pd.age += dt;
+      pd.tick -= dt;
+      if (pd.tick > 0) continue;
+      pd.tick = 0.4;
+      const dmg = s.puddleDmg * p.damageMul;
+      game.grid.forEachNear(pd.x, pd.y, pd.r + MAX_ENEMY_R, (e) => {
+        if (e.dead) return;
+        const rr = pd.r + e.r * 0.5;
+        if ((e.x - pd.x) ** 2 + (e.y - pd.y) ** 2 > rr * rr) return;
+        e.slow = Math.max(e.slow, 0.8);
+        game.hitEnemy(e, dmg, 0, 0);
+      });
+    }
+    this.puddles = this.puddles.filter((pd) => pd.age < 1.5);
     this.tick -= dt;
     if (this.tick > 0) return;
     this.tick = s.tick * p.cooldownMul;
@@ -247,12 +263,21 @@ class Hose extends Weapon {
         const along = rx * cx + ry * cy;
         if (along < 0 || along > s.len + e.r) return;
         if (Math.abs(rx * cy - ry * cx) > e.r + 10) return;
+        e.slow = Math.max(e.slow, 0.8);
         game.hitEnemy(e, dmg, cx * s.knock, cy * s.knock);
       });
+      if (s.puddleDmg) this.puddles.push({ x: p.x + cx * s.len, y: p.y + cy * s.len, r: 40, age: 0, tick: 0 });
     }
   }
   draw(ctx, game) {
     const p = game.player, s = this.s;
+    for (const pd of this.puddles) {
+      const a = Math.min(1, (1.5 - pd.age) / 0.4) * Math.min(1, pd.age / 0.15);
+      ctx.fillStyle = `rgba(79,195,247,${0.3 * a})`;
+      ellipse(ctx, pd.x, pd.y, pd.r, pd.r * 0.6);
+      ctx.fillStyle = `rgba(225,245,254,${0.35 * a})`;
+      ellipse(ctx, pd.x - pd.r * 0.25, pd.y - pd.r * 0.15, pd.r * 0.35, pd.r * 0.15);
+    }
     for (let b = 0; b < s.beams; b++) {
       const a = this.angle + (b * TAU) / s.beams;
       ctx.save();
@@ -275,6 +300,69 @@ class Hose extends Weapon {
       ctx.fillRect(8, -3.5, 8, 7);
       ctx.restore();
     }
+  }
+}
+
+// Flame weeder: a short cone of fire that sets plants burning.
+class Torch extends Weapon {
+  constructor(def) {
+    super(def);
+    this.aim = 0;
+    this.tick = 0;
+    this.puffs = [];
+  }
+  update(dt, game) {
+    const p = game.player, s = this.s;
+    const target = nearestEnemy(game, s.len * 1.6);
+    const want = target ? Math.atan2(target.y - p.y, target.x - p.x) : Math.atan2(p.facing.y, p.facing.x);
+    this.aim += angleDiff(this.aim, want) * Math.min(1, dt * 10);
+
+    for (let i = 0; i < 3; i++) {
+      const a = this.aim + rand(-s.arc / 2, s.arc / 2) * 0.8, v = (s.len / 0.35) * rand(0.75, 1.05);
+      this.puffs.push({ x: p.x + Math.cos(this.aim) * 16, y: p.y + Math.sin(this.aim) * 16, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0 });
+    }
+    for (const f of this.puffs) {
+      f.age += dt;
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+    }
+    this.puffs = this.puffs.filter((f) => f.age < 0.35);
+
+    this.tick -= dt;
+    if (this.tick > 0) return;
+    this.tick = s.tick * p.cooldownMul;
+    const dmg = s.dmg * p.damageMul, a = this.aim;
+    game.grid.forEachNear(p.x, p.y, s.len + MAX_ENEMY_R, (e) => {
+      if (e.dead) return;
+      const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy);
+      if (d > s.len + e.r) return;
+      const ang = Math.atan2(dy, dx);
+      const tol = s.arc / 2 + Math.atan2(e.r, Math.max(d, 1));
+      if (d > e.r && Math.abs(angleDiff(a, ang)) > tol) return;
+      game.ignite(e, s.burn * p.damageMul, s.burnDur, s.spread);
+      game.hitEnemy(e, dmg, Math.cos(ang) * 20, Math.sin(ang) * 20, '#ffb74d');
+    });
+  }
+  draw(ctx, game) {
+    const p = game.player;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of this.puffs) {
+      const k = f.age / 0.35, r = 5 + k * 11;
+      ctx.fillStyle = k < 0.35 ? `rgba(255,213,79,${0.55 * (1 - k)})`
+        : k < 0.75 ? `rgba(255,112,67,${0.5 * (1 - k)})`
+        : `rgba(120,100,90,${0.4 * (1 - k)})`;
+      circle(ctx, f.x, f.y, r);
+    }
+    ctx.restore();
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(this.aim);
+    ctx.fillStyle = '#616161';
+    ctx.fillRect(8, -3, 10, 6);
+    ctx.fillStyle = '#424242';
+    ctx.fillRect(16, -4, 3, 8);
+    ctx.restore();
   }
 }
 
@@ -409,11 +497,21 @@ export const WEAPON_DEFS = {
   hose: {
     id: 'hose', name: 'Garden Hose', cls: Hose, layer: 'above',
     levels: [
-      { dmg: 5, tick: 0.25, len: 130, beams: 1, rot: 1.8, knock: 60, desc: 'A rotating jet of water that pushes plants back.' },
-      { dmg: 6, tick: 0.25, len: 150, beams: 1, rot: 1.9, knock: 70, desc: 'Longer, stronger jet.' },
-      { dmg: 7, tick: 0.25, len: 150, beams: 2, rot: 1.9, knock: 70, desc: 'Adds a second jet.' },
-      { dmg: 9, tick: 0.22, len: 175, beams: 2, rot: 2.2, knock: 80, desc: 'Faster spin, longer reach.' },
-      { dmg: 11, tick: 0.2, len: 200, beams: 3, rot: 2.3, knock: 90, desc: 'Three jets of high-pressure water.' },
+      { dmg: 7, tick: 0.25, len: 130, beams: 1, rot: 1.8, knock: 60, desc: 'A rotating jet that pushes plants back and soaks them (slow).' },
+      { dmg: 8, tick: 0.25, len: 150, beams: 1, rot: 1.9, knock: 70, desc: 'Longer, stronger jet.' },
+      { dmg: 10, tick: 0.25, len: 150, beams: 2, rot: 1.9, knock: 70, desc: 'Adds a second jet.' },
+      { dmg: 13, tick: 0.22, len: 175, beams: 2, rot: 2.2, knock: 80, desc: 'Faster spin, longer reach.' },
+      { dmg: 16, tick: 0.2, len: 200, beams: 3, rot: 2.3, knock: 90, puddleDmg: 4, desc: 'Three jets that leave soaking puddles.' },
+    ],
+  },
+  torch: {
+    id: 'torch', name: 'Weed Torch', cls: Torch, layer: 'above',
+    levels: [
+      { dmg: 3, tick: 0.15, len: 110, arc: 0.6, burn: 6, burnDur: 2, spread: false, desc: 'A cone of fire that sets plants burning.' },
+      { dmg: 4, tick: 0.15, len: 125, arc: 0.6, burn: 8, burnDur: 2, spread: false, desc: 'Longer flame, hotter burn.' },
+      { dmg: 4, tick: 0.15, len: 125, arc: 0.8, burn: 10, burnDur: 2.5, spread: false, desc: 'Wider flame, burns last longer.' },
+      { dmg: 5, tick: 0.15, len: 150, arc: 0.8, burn: 13, burnDur: 2.5, spread: false, desc: 'Even longer, hotter flame.' },
+      { dmg: 5, tick: 0.15, len: 150, arc: 0.95, burn: 16, burnDur: 3, spread: true, desc: 'Burning plants spread fire when they die.' },
     ],
   },
   gnomes: {
